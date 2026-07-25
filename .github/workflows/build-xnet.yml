@@ -1,0 +1,92 @@
+# ============================================================
+#  X-NET sing-box — production binary build
+#
+#  Builds the sing-box CLI binary from THIS repository (including the X-NET
+#  in-core session-admission Gate + RemoteStore) with the full production build
+#  tags, on the SUPPORTED Go toolchain (1.25.x).
+#
+#  WHY Go 1.25 (not 1.26): sing-box's common/badtls uses //go:linkname into
+#  crypto/tls internals that changed in Go 1.26, so a 1.26 build fails at link
+#  time. Go 1.25.x + release/LDFLAGS (-checklinkname=0) is the supported combo.
+#
+#  Trigger: Actions tab -> "X-NET sing-box build" -> Run workflow.
+#  Output:  downloadable artifacts sing-box-linux-amd64 / sing-box-linux-arm64.
+# ============================================================
+name: X-NET sing-box build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string embedded in the binary"
+        required: false
+        default: "xnet-dev"
+        type: string
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Submodules (client apps) are NOT needed for the CLI binary.
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Go 1.25 (supported toolchain)
+        uses: actions/setup-go@v5
+        with:
+          # Pin 1.25.x — MUST NOT be 1.26 (breaks common/badtls linkname).
+          go-version: "1.25.12"
+          cache-dependency-path: |
+            go.sum
+            release/DEFAULT_BUILD_TAGS_OTHERS
+            release/LDFLAGS
+
+      - name: Sanity — X-NET session-admission code is present
+        run: |
+          set -euo pipefail
+          test -d experimental/sessionadmission || { echo "MISSING experimental/sessionadmission"; exit 1; }
+          test -d experimental/sessionadmission/remotestore/managerpb || { echo "MISSING remotestore/managerpb stubs"; exit 1; }
+          grep -q "ManagerEndpoint" box.go || { echo "box.go missing RemoteStore wiring"; exit 1; }
+          echo "OK: session-admission Gate + RemoteStore wiring present"
+
+      - name: Resolve build tags + ldflags
+        run: |
+          set -euo pipefail
+          echo "BUILD_TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" >> "$GITHUB_ENV"
+          echo "LDFLAGS_SHARED=$(cat release/LDFLAGS)" >> "$GITHUB_ENV"
+
+      - name: Build sing-box
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOTOOLCHAIN: local   # use the 1.25 set up above; never auto-switch
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          go build -v -trimpath \
+            -tags "${BUILD_TAGS}" \
+            -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${{ inputs.version }}' ${LDFLAGS_SHARED} -s -w -buildid=" \
+            -o "dist/sing-box" \
+            ./cmd/sing-box
+
+      - name: Show version (amd64 only — runner is amd64)
+        if: matrix.goarch == 'amd64'
+        run: ./dist/sing-box version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/sing-box
+          retention-days: 30

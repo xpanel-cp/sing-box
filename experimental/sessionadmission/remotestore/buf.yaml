@@ -1,0 +1,17 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # Our finalized package is xnet.sessionmanager.v1; the generated Go package
+    # suffix is fixed by go_package. Allow the concise directory layout.
+    - PACKAGE_DIRECTORY_MATCH
+    # The service name "SessionManager" is FINALIZED by the design (§3.3) and is
+    # the shared contract name on both the manager and node sides; do not force
+    # a "Service" suffix that would diverge from the locked contract.
+    - SERVICE_SUFFIX
+breaking:
+  use:
+    - FILE

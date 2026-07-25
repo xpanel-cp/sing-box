@@ -1,0 +1,27 @@
+version: v2
+# Codegen for the fork's copy of the finalized SessionManager v1 contract.
+#
+# This MIRRORS the manager's buf.gen.yaml
+# (f:\xnet\session-manager\buf.gen.yaml) so the fork stubs are byte-identical to
+# the manager's, differing ONLY by the go_package import path set in the .proto.
+#
+# Toolchain (INSTALLED in GOPATH/bin): buf 1.72 + protoc-gen-go + protoc-gen-go-grpc.
+# buf compiles the .proto internally; NO protoc C++ binary is required.
+#
+# Regenerate (Windows PowerShell, prepend GOPATH/bin to PATH in the same command),
+# run from this directory (experimental/sessionadmission/remotestore):
+#   $env:PATH += ";$(go env GOPATH)\bin"; buf generate
+#
+# Output goes into ./managerpb (Go package `managerpb`, fixed by the .proto's
+# go_package option). Managed mode is intentionally left OFF, exactly like the
+# manager, so go_package in the .proto is authoritative for the import path.
+clean: true
+plugins:
+  - local: protoc-gen-go
+    out: managerpb
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: managerpb
+    opt: paths=source_relative
+inputs:
+  - directory: proto
