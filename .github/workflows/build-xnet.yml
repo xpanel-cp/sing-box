@@ -3,14 +3,25 @@
 #
 #  Builds the sing-box CLI binary from THIS repository (including the X-NET
 #  in-core session-admission Gate + RemoteStore) with the full production build
-#  tags, on the SUPPORTED Go toolchain (1.25.x).
+#  tags PLUS with_v2ray_api (required by X-NET for authoritative per-UUID /
+#  V2Ray-Stats accounting), on the SUPPORTED Go toolchain (1.25.x).
 #
 #  WHY Go 1.25 (not 1.26): sing-box's common/badtls uses //go:linkname into
 #  crypto/tls internals that changed in Go 1.26, so a 1.26 build fails at link
 #  time. Go 1.25.x + release/LDFLAGS (-checklinkname=0) is the supported combo.
 #
+#  WHY with_v2ray_api: X-NET's install.sh refuses any core that does NOT report
+#  "with_v2ray_api" on its `sing-box version` Tags line, because per-user traffic
+#  accounting depends on the V2Ray Stats service. The upstream SagerNet release
+#  omits this tag, which is exactly why X-NET ships its own core.
+#
 #  Trigger: Actions tab -> "X-NET sing-box build" -> Run workflow.
-#  Output:  downloadable artifacts sing-box-linux-amd64 / sing-box-linux-arm64.
+#  Output:  artifacts sing-box-linux-amd64 / sing-box-linux-arm64, each a
+#           .zip named sing-box-linux-<arch>.zip whose single inner file is the
+#           binary "sing-box" — matching exactly what install.sh downloads:
+#             <repo>/releases/download/v<version>/sing-box-linux-<arch>.zip
+#  Publish: set input "publish" = true to attach both zips to a GitHub Release
+#           on tag "v<release_tag>" (default v1.13.13), the tag install.sh pins.
 # ============================================================
 name: X-NET sing-box build
 
@@ -21,6 +32,16 @@ on:
         description: "Version string embedded in the binary"
         required: false
         default: "xnet-dev"
+        type: string
+      publish:
+        description: "Publish the two zips to a GitHub Release (tag below)"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag to publish to (must match install.sh SINGBOX_VERSION, prefixed with v)"
+        required: false
+        default: "v1.13.13"
         type: string
 
 jobs:
@@ -62,7 +83,9 @@ jobs:
       - name: Resolve build tags + ldflags
         run: |
           set -euo pipefail
-          echo "BUILD_TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" >> "$GITHUB_ENV"
+          # Base production tags + with_v2ray_api (X-NET accounting requirement).
+          base="$(cat release/DEFAULT_BUILD_TAGS_OTHERS)"
+          echo "BUILD_TAGS=${base},with_v2ray_api" >> "$GITHUB_ENV"
           echo "LDFLAGS_SHARED=$(cat release/LDFLAGS)" >> "$GITHUB_ENV"
 
       - name: Build sing-box
@@ -80,13 +103,71 @@ jobs:
             -o "dist/sing-box" \
             ./cmd/sing-box
 
-      - name: Show version (amd64 only — runner is amd64)
+      - name: Verify version + with_v2ray_api tag (amd64 only — runner is amd64)
         if: matrix.goarch == 'amd64'
-        run: ./dist/sing-box version
+        run: |
+          set -euo pipefail
+          ./dist/sing-box version
+          ./dist/sing-box version | grep -q "with_v2ray_api" \
+            || { echo "FATAL: built binary is missing the with_v2ray_api tag"; exit 1; }
+          echo "OK: with_v2ray_api present"
+
+      - name: Package sing-box-linux-<arch>.zip (inner binary named sing-box)
+        run: |
+          set -euxo pipefail
+          # install.sh downloads sing-box-linux-<arch>.zip and expects a single
+          # inner binary named "sing-box". Zip from inside dist/ so there is no
+          # directory prefix in the archive.
+          ( cd dist && zip -j "sing-box-linux-${{ matrix.goarch }}.zip" sing-box )
+          ls -l "dist/sing-box-linux-${{ matrix.goarch }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: sing-box-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/sing-box
+          path: dist/sing-box-linux-${{ matrix.goarch }}.zip
           retention-days: 30
+
+  # ------------------------------------------------------------
+  #  Optional: attach both zips to a GitHub Release so install.sh can
+  #  download them from <repo>/releases/download/<release_tag>/...
+  #  Runs only when the "publish" input is true.
+  # ------------------------------------------------------------
+  publish:
+    name: publish release
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create/update the release and upload assets
+    steps:
+      - name: Download built zips
+        uses: actions/download-artifact@v4
+        with:
+          # Both sing-box-linux-amd64 / sing-box-linux-arm64 artifacts, flattened.
+          pattern: sing-box-linux-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lR release-assets
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: sing-box ${{ inputs.release_tag }} (X-NET core, with_v2ray_api)
+          body: |
+            X-NET sing-box core build with the in-core session-admission Gate +
+            RemoteStore and the full production build tags including
+            `with_v2ray_api` (per-UUID / V2Ray-Stats accounting).
+
+            Assets (consumed directly by X-NET install.sh):
+            - `sing-box-linux-amd64.zip`
+            - `sing-box-linux-arm64.zip`
+
+            Each zip contains a single binary named `sing-box`.
+          files: |
+            release-assets/sing-box-linux-amd64.zip
+            release-assets/sing-box-linux-arm64.zip
+          fail_on_unmatched_files: true
