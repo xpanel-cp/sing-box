@@ -44,6 +44,15 @@ on:
         default: "v1.13.13"
         type: string
 
+# Grant the automatic GITHUB_TOKEN write access to repo contents so the publish
+# job can create/update the Release and upload assets. NOTE: this only takes
+# effect if the repo/org setting Settings → Actions → General → "Workflow
+# permissions" is set to "Read and write permissions" (the default read-only
+# setting caps the token regardless of this block — that is the #1 cause of a
+# 403 in the publish job).
+permissions:
+  contents: write
+
 jobs:
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -161,13 +170,22 @@ jobs:
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          # Explicit token so the action authenticates even if the default
+          # environment token wiring changes. This is the automatic per-run
+          # GITHUB_TOKEN; it needs `contents: write` (granted above) AND the repo
+          # setting Settings → Actions → General → "Read and write permissions".
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ inputs.release_tag }}
-          name: sing-box ${{ inputs.release_tag }} (X-NET core, with_v2ray_api)
+          name: sing-box ${{ inputs.release_tag }} (X-NET core)
+          make_latest: "true"
           body: |
             X-NET sing-box core build with the in-core session-admission Gate +
             RemoteStore and the full production build tags including
-            `with_v2ray_api` (per-UUID / V2Ray-Stats accounting).
+            `with_v2ray_api` (per-UUID / V2Ray-Stats accounting) and
+            `with_session_admission` (advertises the hard device-limit gate).
 
             Assets (consumed directly by X-NET install.sh):
             - `sing-box-linux-amd64.zip`
