@@ -83,9 +83,14 @@ jobs:
       - name: Resolve build tags + ldflags
         run: |
           set -euo pipefail
-          # Base production tags + with_v2ray_api (X-NET accounting requirement).
+          # Base production tags + with_v2ray_api (X-NET per-UUID accounting) +
+          # with_session_admission (advertises the in-core admission gate so the
+          # panel emits experimental.session_admission and the per-user device cap
+          # is HARD-enforced pre-connection). The gate is compiled unconditionally
+          # in box.go; this tag is the capability signal the panel probes for on
+          # the `sing-box version` Tags line (mirrors with_v2ray_api).
           base="$(cat release/DEFAULT_BUILD_TAGS_OTHERS)"
-          echo "BUILD_TAGS=${base},with_v2ray_api" >> "$GITHUB_ENV"
+          echo "BUILD_TAGS=${base},with_v2ray_api,with_session_admission" >> "$GITHUB_ENV"
           echo "LDFLAGS_SHARED=$(cat release/LDFLAGS)" >> "$GITHUB_ENV"
 
       - name: Build sing-box
@@ -110,7 +115,9 @@ jobs:
           ./dist/sing-box version
           ./dist/sing-box version | grep -q "with_v2ray_api" \
             || { echo "FATAL: built binary is missing the with_v2ray_api tag"; exit 1; }
-          echo "OK: with_v2ray_api present"
+          ./dist/sing-box version | grep -q "with_session_admission" \
+            || { echo "FATAL: built binary is missing the with_session_admission tag"; exit 1; }
+          echo "OK: with_v2ray_api + with_session_admission present"
 
       - name: Package sing-box-linux-<arch>.zip (inner binary named sing-box)
         run: |

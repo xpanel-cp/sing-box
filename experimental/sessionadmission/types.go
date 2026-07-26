@@ -107,6 +107,14 @@ const (
 	FailClose AdmissionFailureMode = "reject"
 )
 
+// String lets AdmissionFailureMode be passed directly to sing-box's logger.
+// sing's format.ToString only stringifies the builtin `string` type or a
+// fmt-style Stringer — a bare named string type (like this one) falls through
+// to its `panic("unknown value")` default. box.go logs the failure mode when the
+// gate is enabled, so WITHOUT this method the core panics at startup once
+// admission is turned on. Returning the underlying string keeps logs readable.
+func (m AdmissionFailureMode) String() string { return string(m) }
+
 // AdmissionReason is a machine-readable code explaining an admission decision,
 // so both rejections and fallback admissions are observable and loggable.
 type AdmissionReason string
@@ -123,6 +131,14 @@ const (
 	// ReasonUnknownDevice: unidentifiable device; outcome resolved per failure mode.
 	ReasonUnknownDevice AdmissionReason = "UNKNOWN_DEVICE"
 )
+
+// String lets AdmissionReason be passed directly to sing-box's logger. The
+// router logs res.Reason on every rejection ("session admission rejected: …
+// reason=…"); without a Stringer, sing's format.ToString hits its
+// panic("unknown value") default — so the core would panic the moment it
+// rejected an over-limit device (exactly the hard-block path). Returning the
+// underlying string keeps the rejection log record intact.
+func (r AdmissionReason) String() string { return string(r) }
 
 // AdmissionResult is the outcome of a Gate decision. A bare bool is not enough:
 // callers need the reason to log rejections and to distinguish a real rejection
