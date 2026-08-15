@@ -702,6 +702,89 @@ func (x *RevokeSessionResponse) GetFreed() int32 {
 	return 0
 }
 
+// NodeHeartbeatRequest is the optional idle-node liveness signal. The
+// authenticated node identity (carried in call metadata) is authoritative; the
+// node_id field mirrors the other node RPCs and must match the caller.
+type NodeHeartbeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeHeartbeatRequest) Reset() {
+	*x = NodeHeartbeatRequest{}
+	mi := &file_session_manager_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeHeartbeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeHeartbeatRequest) ProtoMessage() {}
+
+func (x *NodeHeartbeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_session_manager_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeHeartbeatRequest.ProtoReflect.Descriptor instead.
+func (*NodeHeartbeatRequest) Descriptor() ([]byte, []int) {
+	return file_session_manager_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *NodeHeartbeatRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type NodeHeartbeatResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeHeartbeatResponse) Reset() {
+	*x = NodeHeartbeatResponse{}
+	mi := &file_session_manager_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeHeartbeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeHeartbeatResponse) ProtoMessage() {}
+
+func (x *NodeHeartbeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_session_manager_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeHeartbeatResponse.ProtoReflect.Descriptor instead.
+func (*NodeHeartbeatResponse) Descriptor() ([]byte, []int) {
+	return file_session_manager_proto_rawDescGZIP(), []int{12}
+}
+
 var File_session_manager_proto protoreflect.FileDescriptor
 
 const file_session_manager_proto_rawDesc = "" +
@@ -753,14 +836,18 @@ const file_session_manager_proto_rawDesc = "" +
 	"device_key\x18\x02 \x01(\tR\tdeviceKeyJ\x04\b\x03\x10\x10\"M\n" +
 	"\x15RevokeSessionResponse\x12\x18\n" +
 	"\arevoked\x18\x01 \x01(\bR\arevoked\x12\x14\n" +
-	"\x05freed\x18\x02 \x01(\x05R\x05freedJ\x04\b\x03\x10\x102\xc2\x04\n" +
+	"\x05freed\x18\x02 \x01(\x05R\x05freedJ\x04\b\x03\x10\x10\"5\n" +
+	"\x14NodeHeartbeatRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeIdJ\x04\b\x02\x10\x10\"\x1d\n" +
+	"\x15NodeHeartbeatResponseJ\x04\b\x01\x10\x102\xb0\x05\n" +
 	"\x0eSessionManager\x12o\n" +
 	"\x0eAcquireSession\x12-.xnet.sessionmanager.v1.AcquireSessionRequest\x1a..xnet.sessionmanager.v1.AcquireSessionResponse\x12o\n" +
 	"\x0eReleaseSession\x12-.xnet.sessionmanager.v1.ReleaseSessionRequest\x1a..xnet.sessionmanager.v1.ReleaseSessionResponse\x12c\n" +
 	"\n" +
 	"RenewLease\x12).xnet.sessionmanager.v1.RenewLeaseRequest\x1a*.xnet.sessionmanager.v1.RenewLeaseResponse\x12{\n" +
 	"\x12GetSessionSnapshot\x121.xnet.sessionmanager.v1.GetSessionSnapshotRequest\x1a2.xnet.sessionmanager.v1.GetSessionSnapshotResponse\x12l\n" +
-	"\rRevokeSession\x12,.xnet.sessionmanager.v1.RevokeSessionRequest\x1a-.xnet.sessionmanager.v1.RevokeSessionResponseB\\ZZgithub.com/sagernet/sing-box/experimental/sessionadmission/remotestore/managerpb;managerpbb\x06proto3"
+	"\rRevokeSession\x12,.xnet.sessionmanager.v1.RevokeSessionRequest\x1a-.xnet.sessionmanager.v1.RevokeSessionResponse\x12l\n" +
+	"\rNodeHeartbeat\x12,.xnet.sessionmanager.v1.NodeHeartbeatRequest\x1a-.xnet.sessionmanager.v1.NodeHeartbeatResponseB\\ZZgithub.com/sagernet/sing-box/experimental/sessionadmission/remotestore/managerpb;managerpbb\x06proto3"
 
 var (
 	file_session_manager_proto_rawDescOnce sync.Once
@@ -774,7 +861,7 @@ func file_session_manager_proto_rawDescGZIP() []byte {
 	return file_session_manager_proto_rawDescData
 }
 
-var file_session_manager_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_session_manager_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_session_manager_proto_goTypes = []any{
 	(*AcquireSessionRequest)(nil),      // 0: xnet.sessionmanager.v1.AcquireSessionRequest
 	(*AcquireSessionResponse)(nil),     // 1: xnet.sessionmanager.v1.AcquireSessionResponse
@@ -787,6 +874,8 @@ var file_session_manager_proto_goTypes = []any{
 	(*Device)(nil),                     // 8: xnet.sessionmanager.v1.Device
 	(*RevokeSessionRequest)(nil),       // 9: xnet.sessionmanager.v1.RevokeSessionRequest
 	(*RevokeSessionResponse)(nil),      // 10: xnet.sessionmanager.v1.RevokeSessionResponse
+	(*NodeHeartbeatRequest)(nil),       // 11: xnet.sessionmanager.v1.NodeHeartbeatRequest
+	(*NodeHeartbeatResponse)(nil),      // 12: xnet.sessionmanager.v1.NodeHeartbeatResponse
 }
 var file_session_manager_proto_depIdxs = []int32{
 	8,  // 0: xnet.sessionmanager.v1.GetSessionSnapshotResponse.devices:type_name -> xnet.sessionmanager.v1.Device
@@ -795,13 +884,15 @@ var file_session_manager_proto_depIdxs = []int32{
 	4,  // 3: xnet.sessionmanager.v1.SessionManager.RenewLease:input_type -> xnet.sessionmanager.v1.RenewLeaseRequest
 	6,  // 4: xnet.sessionmanager.v1.SessionManager.GetSessionSnapshot:input_type -> xnet.sessionmanager.v1.GetSessionSnapshotRequest
 	9,  // 5: xnet.sessionmanager.v1.SessionManager.RevokeSession:input_type -> xnet.sessionmanager.v1.RevokeSessionRequest
-	1,  // 6: xnet.sessionmanager.v1.SessionManager.AcquireSession:output_type -> xnet.sessionmanager.v1.AcquireSessionResponse
-	3,  // 7: xnet.sessionmanager.v1.SessionManager.ReleaseSession:output_type -> xnet.sessionmanager.v1.ReleaseSessionResponse
-	5,  // 8: xnet.sessionmanager.v1.SessionManager.RenewLease:output_type -> xnet.sessionmanager.v1.RenewLeaseResponse
-	7,  // 9: xnet.sessionmanager.v1.SessionManager.GetSessionSnapshot:output_type -> xnet.sessionmanager.v1.GetSessionSnapshotResponse
-	10, // 10: xnet.sessionmanager.v1.SessionManager.RevokeSession:output_type -> xnet.sessionmanager.v1.RevokeSessionResponse
-	6,  // [6:11] is the sub-list for method output_type
-	1,  // [1:6] is the sub-list for method input_type
+	11, // 6: xnet.sessionmanager.v1.SessionManager.NodeHeartbeat:input_type -> xnet.sessionmanager.v1.NodeHeartbeatRequest
+	1,  // 7: xnet.sessionmanager.v1.SessionManager.AcquireSession:output_type -> xnet.sessionmanager.v1.AcquireSessionResponse
+	3,  // 8: xnet.sessionmanager.v1.SessionManager.ReleaseSession:output_type -> xnet.sessionmanager.v1.ReleaseSessionResponse
+	5,  // 9: xnet.sessionmanager.v1.SessionManager.RenewLease:output_type -> xnet.sessionmanager.v1.RenewLeaseResponse
+	7,  // 10: xnet.sessionmanager.v1.SessionManager.GetSessionSnapshot:output_type -> xnet.sessionmanager.v1.GetSessionSnapshotResponse
+	10, // 11: xnet.sessionmanager.v1.SessionManager.RevokeSession:output_type -> xnet.sessionmanager.v1.RevokeSessionResponse
+	12, // 12: xnet.sessionmanager.v1.SessionManager.NodeHeartbeat:output_type -> xnet.sessionmanager.v1.NodeHeartbeatResponse
+	7,  // [7:13] is the sub-list for method output_type
+	1,  // [1:7] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -818,7 +909,7 @@ func file_session_manager_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_session_manager_proto_rawDesc), len(file_session_manager_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

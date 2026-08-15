@@ -62,6 +62,14 @@ service SessionManager {
   // cannot revoke; the manager denies node callers (PermissionDenied) in v1.
   rpc RevokeSession     (RevokeSessionRequest)      returns (RevokeSessionResponse);
 
+  // NodeHeartbeat is an OPTIONAL, strictly ADDITIVE liveness signal by which an
+  // IDLE node holding zero leases refreshes its last_heartbeat in the manager's
+  // NodeRegistry (Requirement 17.3). A node holding leases refreshes its
+  // liveness implicitly through RenewLease, so this RPC is only needed while a
+  // node has no live leases to renew. It is a NODE-role data-plane op,
+  // authenticated exactly like the other node RPCs (HMAC in call metadata).
+  rpc NodeHeartbeat     (NodeHeartbeatRequest)      returns (NodeHeartbeatResponse);
+
   // --- RESERVED / PLANNED future SERVER STREAMING (NOT in v1) ---
   // Declared/reserved so they can be added later with NO breaking change to the
   // unary contract above. v1 does NOT implement these.
@@ -152,4 +160,16 @@ message RevokeSessionResponse {
   bool  revoked = 1;
   int32 freed   = 2;        // number of slots freed
   reserved 3 to 15;
+}
+
+// NodeHeartbeatRequest is the optional idle-node liveness signal. The
+// authenticated node identity (carried in call metadata) is authoritative; the
+// node_id field mirrors the other node RPCs and must match the caller.
+message NodeHeartbeatRequest {
+  string node_id = 1;
+  reserved 2 to 15;         // keep field numbers stable/reserved for evolution
+}
+
+message NodeHeartbeatResponse {
+  reserved 1 to 15;         // no v1 payload; reserved for additive evolution
 }

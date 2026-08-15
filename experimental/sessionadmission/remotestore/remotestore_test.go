@@ -47,7 +47,24 @@ type stubServer struct {
 	renewReqs    []*managerpb.RenewLeaseRequest
 	renewExpired []string
 
+	nodeHeartbeatCalls int
+	nodeHeartbeatReqs  []*managerpb.NodeHeartbeatRequest
+
 	snapshot *managerpb.GetSessionSnapshotResponse
+}
+
+func (s *stubServer) NodeHeartbeat(_ context.Context, req *managerpb.NodeHeartbeatRequest) (*managerpb.NodeHeartbeatResponse, error) {
+	s.mu.Lock()
+	s.nodeHeartbeatCalls++
+	s.nodeHeartbeatReqs = append(s.nodeHeartbeatReqs, req)
+	s.mu.Unlock()
+	return &managerpb.NodeHeartbeatResponse{}, nil
+}
+
+func (s *stubServer) nodeHeartbeatCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nodeHeartbeatCalls
 }
 
 func (s *stubServer) AcquireSession(ctx context.Context, req *managerpb.AcquireSessionRequest) (*managerpb.AcquireSessionResponse, error) {
@@ -471,4 +488,46 @@ func TestObservabilityMapsSnapshot(t *testing.T) {
 	if got := rs.Snapshot(context.Background()); len(got) != 0 {
 		t.Fatalf("Snapshot must be an empty aggregate in v1, got %v", got)
 	}
+}
+
+// TestIdleNodeSendsNodeHeartbeat proves an IDLE node (holding zero leases) sends
+// the standalone NodeHeartbeat liveness RPC on each heartbeat tick, so the
+// manager keeps it marked online (Requirement 17.3). Before the proto/NodeHeartbeat
+// wiring this path did not exist and an idle node went silent.
+func TestIdleNodeSendsNodeHeartbeat(t *testing.T) {
+	stub := &stubServer{}
+	conn := startStub(t, stub, true)
+	rs, err := New(Config{
+		Conn:              conn,
+		NodeID:            testNodeID,
+		HeartbeatInterval: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = rs.Close() })
+
+	// No Acquire → zero leases → each tick must send a NodeHeartbeat.
+	deadline := time.Now().Add(2 * time.Second)
+	for stub.nodeHeartbeatCount() < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := stub.nodeHeartbeatCount(); got < 1 {
+		t.Fatalf("idle node never sent NodeHeartbeat (count=%d)", got)
+	}
+	// The heartbeat must carry this node's id (also authenticated in metadata).
+	stub.mu.Lock()
+	nodeID := ""
+	if len(stub.nodeHeartbeatReqs) > 0 {
+		nodeID = stub.nodeHeartbeatReqs[0].GetNodeId()
+	}
+	stub.mu.Unlock()
+	if nodeID != testNodeID {
+		t.Fatalf("NodeHeartbeat node_id = %q, want %q", nodeID, testNodeID)
+	}
+	t.Logf("PROOF OK: idle node sent NodeHeartbeat (count>=%d, node_id=%s)", stub.nodeHeartbeatCount(), nodeID)
+
+	// And once the node holds a lease, RenewLease (not NodeHeartbeat) carries
+	// liveness — verify a NodeHeartbeat is NOT required while leases are live is
+	// out of scope here; the idle path is the proof.
 }

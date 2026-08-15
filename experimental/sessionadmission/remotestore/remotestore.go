@@ -237,17 +237,25 @@ func (r *RemoteStore) heartbeatLoop(interval time.Duration) {
 		case <-r.stopCh:
 			return
 		case <-ticker.C:
-			r.renewAll()
+			// Renew all live leases; when the node holds NONE, send a standalone
+			// idle liveness heartbeat so the manager keeps this node marked online
+			// (Requirement 17.3) and never sweeps it offline while it is healthy
+			// but simply carrying no sessions.
+			if !r.renewAll() {
+				r.sendNodeHeartbeat()
+			}
 		}
 	}
 }
 
 // renewAll batch-renews every live lease in one RenewLease call on a fresh
-// context and drops any lease the manager reports expired.
-func (r *RemoteStore) renewAll() {
+// context and drops any lease the manager reports expired. It returns true when
+// there was at least one lease to renew (so the caller can fall back to a
+// standalone NodeHeartbeat when the node is idle), false when there were none.
+func (r *RemoteStore) renewAll() bool {
 	ids := r.snapshotLeases()
 	if len(ids) == 0 {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), renewTimeout)
 	defer cancel()
@@ -256,11 +264,22 @@ func (r *RemoteStore) renewAll() {
 		NodeId:  r.nodeID,
 	})
 	if err != nil {
-		return // best-effort; a missed heartbeat is recovered next tick
+		return true // best-effort; a missed heartbeat is recovered next tick
 	}
 	for _, expired := range resp.GetExpired() {
 		r.removeLease(expired)
 	}
+	return true
+}
+
+// sendNodeHeartbeat sends one idle-node liveness NodeHeartbeat on a fresh
+// context, best-effort (a missed beat is recovered on the next tick). It is only
+// called when the node holds zero live leases; a node with leases refreshes its
+// liveness implicitly through RenewLease.
+func (r *RemoteStore) sendNodeHeartbeat() {
+	ctx, cancel := context.WithTimeout(context.Background(), renewTimeout)
+	defer cancel()
+	_, _ = r.client.NodeHeartbeat(ctx, &managerpb.NodeHeartbeatRequest{NodeId: r.nodeID})
 }
 
 // Snapshot returns a best-effort empty aggregate in v1 (documented; not the hot

@@ -94,6 +94,20 @@ func (c connectionObject) MarshalJSON() ([]byte, error) {
 			"host":            domain,
 			"dnsMode":         "normal",
 			"processPath":     processPath,
+			// user is the authenticated inbound user (the "name" field of the
+			// matched entry in the inbound's users[]). Every multi-user protocol
+			// already records it on the connection — see metadata.User in the
+			// vless/vmess/trojan/hysteria2/... inbounds — but upstream's snapshot
+			// dropped it here, so /connections described WHERE a connection
+			// arrived and never WHO opened it.
+			//
+			// That omission is what makes per-account presence and device counts
+			// impossible for any inbound holding more than one client: a consumer
+			// can only fall back to guessing from the inbound tag, which is
+			// ambiguous the moment a second user shares the inbound. Emitting the
+			// field costs nothing (it is already in memory) and is additive —
+			// existing Clash clients ignore keys they do not know.
+			"user": c.Metadata.User,
 		},
 		"upload":      c.Upload.Load(),
 		"download":    c.Download.Load(),

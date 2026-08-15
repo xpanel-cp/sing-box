@@ -59,6 +59,7 @@ const (
 	SessionManager_RenewLease_FullMethodName         = "/xnet.sessionmanager.v1.SessionManager/RenewLease"
 	SessionManager_GetSessionSnapshot_FullMethodName = "/xnet.sessionmanager.v1.SessionManager/GetSessionSnapshot"
 	SessionManager_RevokeSession_FullMethodName      = "/xnet.sessionmanager.v1.SessionManager/RevokeSession"
+	SessionManager_NodeHeartbeat_FullMethodName      = "/xnet.sessionmanager.v1.SessionManager/NodeHeartbeat"
 )
 
 // SessionManagerClient is the client API for SessionManager service.
@@ -82,6 +83,13 @@ type SessionManagerClient interface {
 	// RevokeSession is an ADMIN/future control operation. Node RPC credentials
 	// cannot revoke; the manager denies node callers (PermissionDenied) in v1.
 	RevokeSession(ctx context.Context, in *RevokeSessionRequest, opts ...grpc.CallOption) (*RevokeSessionResponse, error)
+	// NodeHeartbeat is an OPTIONAL, strictly ADDITIVE liveness signal by which an
+	// IDLE node holding zero leases refreshes its last_heartbeat in the manager's
+	// NodeRegistry (Requirement 17.3). A node holding leases refreshes its
+	// liveness implicitly through RenewLease, so this RPC is only needed while a
+	// node has no live leases to renew. It is a NODE-role data-plane op,
+	// authenticated exactly like the other node RPCs (HMAC in call metadata).
+	NodeHeartbeat(ctx context.Context, in *NodeHeartbeatRequest, opts ...grpc.CallOption) (*NodeHeartbeatResponse, error)
 }
 
 type sessionManagerClient struct {
@@ -142,6 +150,16 @@ func (c *sessionManagerClient) RevokeSession(ctx context.Context, in *RevokeSess
 	return out, nil
 }
 
+func (c *sessionManagerClient) NodeHeartbeat(ctx context.Context, in *NodeHeartbeatRequest, opts ...grpc.CallOption) (*NodeHeartbeatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeHeartbeatResponse)
+	err := c.cc.Invoke(ctx, SessionManager_NodeHeartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SessionManagerServer is the server API for SessionManager service.
 // All implementations must embed UnimplementedSessionManagerServer
 // for forward compatibility.
@@ -163,6 +181,13 @@ type SessionManagerServer interface {
 	// RevokeSession is an ADMIN/future control operation. Node RPC credentials
 	// cannot revoke; the manager denies node callers (PermissionDenied) in v1.
 	RevokeSession(context.Context, *RevokeSessionRequest) (*RevokeSessionResponse, error)
+	// NodeHeartbeat is an OPTIONAL, strictly ADDITIVE liveness signal by which an
+	// IDLE node holding zero leases refreshes its last_heartbeat in the manager's
+	// NodeRegistry (Requirement 17.3). A node holding leases refreshes its
+	// liveness implicitly through RenewLease, so this RPC is only needed while a
+	// node has no live leases to renew. It is a NODE-role data-plane op,
+	// authenticated exactly like the other node RPCs (HMAC in call metadata).
+	NodeHeartbeat(context.Context, *NodeHeartbeatRequest) (*NodeHeartbeatResponse, error)
 	mustEmbedUnimplementedSessionManagerServer()
 }
 
@@ -187,6 +212,9 @@ func (UnimplementedSessionManagerServer) GetSessionSnapshot(context.Context, *Ge
 }
 func (UnimplementedSessionManagerServer) RevokeSession(context.Context, *RevokeSessionRequest) (*RevokeSessionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeSession not implemented")
+}
+func (UnimplementedSessionManagerServer) NodeHeartbeat(context.Context, *NodeHeartbeatRequest) (*NodeHeartbeatResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method NodeHeartbeat not implemented")
 }
 func (UnimplementedSessionManagerServer) mustEmbedUnimplementedSessionManagerServer() {}
 func (UnimplementedSessionManagerServer) testEmbeddedByValue()                        {}
@@ -299,6 +327,24 @@ func _SessionManager_RevokeSession_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SessionManager_NodeHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeHeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionManagerServer).NodeHeartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SessionManager_NodeHeartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionManagerServer).NodeHeartbeat(ctx, req.(*NodeHeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SessionManager_ServiceDesc is the grpc.ServiceDesc for SessionManager service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -325,6 +371,10 @@ var SessionManager_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeSession",
 			Handler:    _SessionManager_RevokeSession_Handler,
+		},
+		{
+			MethodName: "NodeHeartbeat",
+			Handler:    _SessionManager_NodeHeartbeat_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
