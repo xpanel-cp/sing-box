@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/netip"
 	"os"
+	"reflect"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -13,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/schema"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -28,7 +30,7 @@ func baseContext(platformInterface PlatformInterface) context.Context {
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
 			dns.RegisterTransport[option.LocalDNSServerOptions](dnsRegistry, C.DNSTypeLocal, func(ctx context.Context, logger log.ContextLogger, tag string, options option.LocalDNSServerOptions) (adapter.DNSTransport, error) {
-				return newPlatformTransport(localTransport, tag, options), nil
+				return newPlatformTransport(ctx, logger, localTransport, tag, options)
 			})
 		}
 	}
@@ -125,7 +127,7 @@ func (s *platformInterfaceStub) UsePlatformWIFIMonitor() bool {
 	return false
 }
 
-func (s *platformInterfaceStub) ReadWIFIState() adapter.WIFIState {
+func (s *platformInterfaceStub) ReadWIFIState(ctx context.Context) adapter.WIFIState {
 	return adapter.WIFIState{}
 }
 
@@ -142,6 +144,10 @@ func (s *platformInterfaceStub) UsePlatformNotification() bool {
 }
 
 func (s *platformInterfaceStub) SendNotification(notification *adapter.Notification) error {
+	return nil
+}
+
+func (s *platformInterfaceStub) CancelNotification(identifier string, typeID int32) error {
 	return nil
 }
 
@@ -239,6 +245,14 @@ func (s *interfaceMonitorStub) RegisterMyInterface(interfaceName string) {
 
 func (s *interfaceMonitorStub) MyInterfaces() []string {
 	return nil
+}
+
+func GenerateConfigSchema() (*StringBox, error) {
+	content, err := schema.Generate(baseContext(nil), reflect.TypeFor[option.Options]())
+	if err != nil {
+		return nil, err
+	}
+	return wrapString(string(content)), nil
 }
 
 func FormatConfig(configContent string) (*StringBox, error) {

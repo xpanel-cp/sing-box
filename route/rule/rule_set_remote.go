@@ -3,8 +3,10 @@ package rule
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +24,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/x/list"
 	"github.com/sagernet/sing/service"
+	"github.com/sagernet/sing/service/filemanager"
 	"github.com/sagernet/sing/service/pause"
 
 	"go4.org/netipx"
@@ -36,6 +39,8 @@ type RemoteRuleSet struct {
 	outbound       adapter.OutboundManager
 	tag            string
 	url            string
+	urlHash        [32]byte
+	initialPath    string
 	options        option.RuleSet
 	updateInterval time.Duration
 	httpClient     *http.Client
@@ -58,13 +63,21 @@ func NewRemoteRuleSet(ctx context.Context, logger logger.ContextLogger, tag stri
 	} else {
 		updateInterval = 24 * time.Hour
 	}
+	var initialPath string
+	if options.RemoteOptions.InitialPath != "" {
+		initialPath = filemanager.BasePath(ctx, strings.ReplaceAll(options.RemoteOptions.InitialPath, C.RuleSetTagPlaceholder, tag))
+		initialPath, _ = filepath.Abs(initialPath)
+	}
+	url := strings.ReplaceAll(options.RemoteOptions.URL, C.RuleSetTagPlaceholder, tag)
 	return &RemoteRuleSet{
 		ctx:            ctx,
 		cancel:         cancel,
 		outbound:       service.FromContext[adapter.OutboundManager](ctx),
 		logger:         logger,
 		tag:            tag,
-		url:            strings.ReplaceAll(options.RemoteOptions.URL, C.RuleSetTagPlaceholder, tag),
+		url:            url,
+		urlHash:        sha256.Sum256([]byte(url)),
+		initialPath:    initialPath,
 		options:        options,
 		updateInterval: updateInterval,
 		pauseManager:   service.FromContext[pause.Manager](ctx),
@@ -88,17 +101,35 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 	startContext.Register(transport)
 	s.httpClient = &http.Client{Transport: transport}
 	if s.cacheFile != nil {
-		if savedSet := s.cacheFile.LoadRuleSet(s.tag); savedSet != nil {
-			err = s.loadBytes(savedSet.Content)
-			if err != nil {
-				s.logger.Warn(E.Cause(err, "restore cached rule-set, will refetch"))
+		savedSet := s.cacheFile.LoadRuleSet(s.tag)
+		if savedSet != nil {
+			if len(savedSet.URLHash) > 0 && !bytes.Equal(savedSet.URLHash, s.urlHash[:]) {
+				s.logger.Info("cached rule-set was downloaded from another URL, will refetch")
 			} else {
-				s.lastUpdated = savedSet.LastUpdated
-				s.lastEtag = savedSet.LastEtag
+				err = s.loadBytes(savedSet.Content)
+				if err != nil {
+					s.logger.Warn(E.Cause(err, "restore cached rule-set, will refetch"))
+				} else {
+					s.lastUpdated = savedSet.LastUpdated
+					s.lastEtag = savedSet.LastEtag
+				}
 			}
 		}
 	}
-	if s.lastUpdated.IsZero() {
+	var loadedFromInitialPath bool
+	if s.lastUpdated.IsZero() && s.initialPath != "" {
+		var content []byte
+		content, err = filemanager.ReadFile(s.ctx, s.initialPath)
+		if err == nil {
+			err = s.loadBytes(content)
+		}
+		if err != nil {
+			s.logger.Warn(E.Cause(err, "load initial rule-set from ", s.initialPath))
+		} else {
+			loadedFromInitialPath = true
+		}
+	}
+	if s.lastUpdated.IsZero() && !loadedFromInitialPath {
 		err = s.fetch(ctx, true)
 		if err != nil {
 			return E.Cause(err, "initial rule-set: ", s.tag)
@@ -227,6 +258,7 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
 			savedRuleSet := s.cacheFile.LoadRuleSet(s.tag)
 			if savedRuleSet != nil {
 				savedRuleSet.LastUpdated = s.lastUpdated
+				savedRuleSet.URLHash = s.urlHash[:]
 				err = s.cacheFile.SaveRuleSet(s.tag, savedRuleSet)
 				if err != nil {
 					s.logger.Error("save rule-set updated time: ", err)
@@ -257,6 +289,7 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
 			LastUpdated: s.lastUpdated,
 			Content:     content,
 			LastEtag:    s.lastEtag,
+			URLHash:     s.urlHash[:],
 		})
 		if err != nil {
 			s.logger.Error("save rule-set cache: ", err)
@@ -297,19 +330,9 @@ func (s *RemoteRuleSet) Close() error {
 }
 
 func (s *RemoteRuleSet) Match(metadata *adapter.InboundContext) bool {
-	return !s.matchStates(metadata).isEmpty()
+	return matchAnyHeadlessRule(s.rules, metadata)
 }
 
-func (s *RemoteRuleSet) matchStates(metadata *adapter.InboundContext) ruleMatchStateSet {
-	return s.matchStatesWithBase(metadata, 0)
-}
-
-func (s *RemoteRuleSet) matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
-	var stateSet ruleMatchStateSet
-	for _, rule := range s.rules {
-		nestedMetadata := *metadata
-		nestedMetadata.ResetRuleMatchCache()
-		stateSet = stateSet.merge(matchHeadlessRuleStatesWithBase(rule, &nestedMetadata, base))
-	}
-	return stateSet
+func (s *RemoteRuleSet) mergeableRule() *DefaultHeadlessRule {
+	return mergeableRuleIn(s.rules)
 }

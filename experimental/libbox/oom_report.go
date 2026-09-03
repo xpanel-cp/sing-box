@@ -302,16 +302,24 @@ func buildOOMConnection(connection *trafficcontrol.TrackerMetadata) oomConnectio
 	return info
 }
 
-func writeOOMLog(destPath string, entries []*log.Entry) {
+func formatLogEntries(entries []*log.Entry) []byte {
 	if len(entries) == 0 {
-		return
+		return nil
 	}
 	var buffer bytes.Buffer
 	for _, entry := range entries {
 		writeWithoutColors(&buffer, entry.Message)
 		buffer.WriteByte('\n')
 	}
-	writeReportFile(destPath, "go.log", buffer.Bytes())
+	return buffer.Bytes()
+}
+
+func writeOOMLog(destPath string, entries []*log.Entry) {
+	content := formatLogEntries(entries)
+	if content == nil {
+		return
+	}
+	writeReportFile(destPath, "go.log", content)
 }
 
 func writeWithoutColors(buffer *bytes.Buffer, message string) {
@@ -347,6 +355,17 @@ func promoteOOMDraftAt(workingPath string) {
 	draftPath := filepath.Join(workingPath, "oom_draft")
 	info, err := os.Stat(draftPath)
 	if err != nil || !info.IsDir() {
+		return
+	}
+	metadataContent, err := os.ReadFile(filepath.Join(draftPath, "metadata.json"))
+	if err != nil {
+		os.RemoveAll(draftPath)
+		return
+	}
+	var draftMetadata reportMetadata
+	err = json.Unmarshal(metadataContent, &draftMetadata)
+	if err != nil || draftMetadata.AppVersion != sAppVersion || draftMetadata.AppMarketingVersion != sAppMarketingVersion {
+		os.RemoveAll(draftPath)
 		return
 	}
 	reportsDir := filepath.Join(workingPath, "oom_reports")

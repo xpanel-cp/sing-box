@@ -14,6 +14,8 @@ icon: material/alert-decagram
     :material-plus: [response_ns](#response_ns)  
     :material-plus: [response_extra](#response_extra)  
     :material-plus: [package_name_regex](#package_name_regex)  
+    :material-plus: [query_client_subnet](#query_client_subnet)  
+    :material-plus: [query_dnssec](#query_dnssec)  
     :material-alert: [ip_version](#ip_version)  
     :material-alert: [query_type](#query_type)
 
@@ -77,6 +79,11 @@ icon: material/alert-decagram
           "HTTPS",
           32768
         ],
+        "query_client_subnet": [
+          "10.0.0.0/24",
+          "192.168.0.1"
+        ],
+        "query_dnssec": false,
         "network": "tcp",
         "auth_user": [
           "usera",
@@ -236,13 +243,13 @@ icon: material/alert-decagram
 !!! note ""
 
     The default rule uses the following matching logic:  
-    (`domain` || `domain_suffix` || `domain_keyword` || `domain_regex` || `geosite`) &&  
+    (`domain` || `domain_suffix` || `domain_keyword` || `domain_regex` || `geosite` || `ip_cidr` || `ip_is_private` || `ip_accept_any`) &&  
     (`port` || `port_range`) &&  
-    (`source_geoip` || `source_ip_cidr` ｜｜ `source_ip_is_private`) &&  
+    (`source_geoip` || `source_ip_cidr` || `source_ip_is_private`) &&  
     (`source_port` || `source_port_range`) &&  
     `other fields`
 
-    Additionally, each branch inside an included rule-set can be considered merged into the outer rule, while different branches keep OR semantics.
+    When a rule-set contains only a single default rule without `invert`, its fields are considered merged into the outer rule per the logic above; otherwise, it is matched as an `other field`; different rule-sets always keep OR semantics.
 
 #### inbound
 
@@ -291,6 +298,22 @@ Not limited if empty.
     action and [`match_response`](#match_response).
 
 DNS query type. Values can be integers or type name strings.
+
+#### query_client_subnet
+
+!!! question "Since sing-box 1.14.0"
+
+Match the `edns0-subnet` OPT extra record (EDNS Client Subnet) in the query.
+
+A listed prefix matches when it is no more specific than the received client subnet and contains its address.
+
+If value is an IP address instead of prefix, `/32` or `/128` will be appended automatically.
+
+#### query_dnssec
+
+!!! question "Since sing-box 1.14.0"
+
+Match queries with the DNSSEC OK (`DO`) bit set.
 
 #### network
 
@@ -562,7 +585,11 @@ Enable response-based matching. When enabled, this rule matches against the eval
 (set by a preceding [`evaluate`](/configuration/dns/rule_action/#evaluate) action)
 instead of only matching the original query.
 
-The evaluated response can also be returned directly by a later [`respond`](/configuration/dns/rule_action/#respond) action.
+`true` or the `tag` of an `evaluate` action: `true` matches against the response of the latest
+`evaluate` action without `tag`; a tag matches against the response of the `evaluate` action with the tag.
+
+The evaluated response can also be returned directly by a later [`respond`](/configuration/dns/rule_action/#respond) action;
+in a rule with a `match_response` tag, `respond` returns the tagged response.
 
 Required for Response Match Fields (`response_rcode`, `response_answer`, `response_ns`, `response_extra`).
 Also required for `ip_cidr`, `ip_is_private`, and `ip_accept_any` when used with `evaluate` or Response Match Fields.
