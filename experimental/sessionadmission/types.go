@@ -128,9 +128,34 @@ const (
 	ReasonDeviceLimit AdmissionReason = "DEVICE_LIMIT_REACHED"
 	// ReasonStoreTimeout: store error/timeout; outcome resolved per failure mode.
 	ReasonStoreTimeout AdmissionReason = "STORE_TIMEOUT"
+	// ReasonStoreUnauthenticated: the store REFUSED this node's credential;
+	// outcome resolved per failure mode.
+	//
+	// Split out from ReasonStoreTimeout because the two need opposite responses
+	// and used to be indistinguishable. A timeout says the manager is slow or
+	// unreachable — wait, or check the network. This says the manager answered,
+	// immediately, that it does not accept this node: the node's secret no longer
+	// matches the manager's. Under the fail-closed default that refuses every
+	// user on the node until an operator fixes the credential, and reporting it
+	// as a timeout sends them to look at a network that is working fine.
+	ReasonStoreUnauthenticated AdmissionReason = "STORE_UNAUTHENTICATED"
 	// ReasonUnknownDevice: unidentifiable device; outcome resolved per failure mode.
 	ReasonUnknownDevice AdmissionReason = "UNKNOWN_DEVICE"
 )
+
+// StoreAuthError is implemented by a SessionStore error that means the store
+// REJECTED the node's credential, as opposed to failing to answer at all.
+//
+// It is an interface rather than a sentinel error so the classification crosses
+// the store seam without the Gate learning anything about a transport: a
+// gRPC-backed store maps its own Unauthenticated status onto this, while the
+// sessionadmission package keeps its audited freedom from gRPC/proto imports
+// (see remotestore.TestSessionAdmissionPackageHasNoGRPCImports).
+type StoreAuthError interface {
+	error
+	// StoreUnauthenticated reports that the store refused the node's credential.
+	StoreUnauthenticated() bool
+}
 
 // String lets AdmissionReason be passed directly to sing-box's logger. The
 // router logs res.Reason on every rejection ("session admission rejected: …

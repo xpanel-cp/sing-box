@@ -46,8 +46,42 @@ import (
 	"github.com/sagernet/sing-box/experimental/sessionadmission/remotestore/managerpb"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
+
+// authError marks an RPC that the manager REFUSED on credentials, implementing
+// sessionadmission.StoreAuthError so the Gate can report it as
+// STORE_UNAUTHENTICATED instead of STORE_TIMEOUT.
+//
+// The distinction is the operator's, not the Gate's: both outcomes are resolved
+// by the failure mode, but one means "the manager is unreachable or slow" and
+// the other means "the manager answered in a millisecond that it does not
+// accept this node's secret". A node whose secret has drifted from the
+// manager's refuses EVERY user under the fail-closed default, and reporting
+// that as a timeout is what makes it look like a network fault.
+type authError struct{ err error }
+
+func (e *authError) Error() string              { return e.err.Error() }
+func (e *authError) Unwrap() error              { return e.err }
+func (e *authError) StoreUnauthenticated() bool { return true }
+
+// classifyRPCError wraps an Unauthenticated status so the Gate can tell a
+// refused credential from an unanswered call. Every other error is returned
+// unchanged and stays a STORE_TIMEOUT.
+func classifyRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if s, ok := status.FromError(err); ok && s.Code() == codes.Unauthenticated {
+		return &authError{err}
+	}
+	return err
+}
+
+// compile-time proof that the wrapper satisfies the seam the Gate matches on.
+var _ sessionadmission.StoreAuthError = (*authError)(nil)
 
 const (
 	// defaultHeartbeatInterval batch-renews all live leases at ≈ Lease_TTL/3.
@@ -181,8 +215,11 @@ func (r *RemoteStore) Acquire(ctx context.Context, user, deviceKey string, limit
 	}
 	resp, err := r.client.AcquireSession(ctx, req)
 	if err != nil {
-		// ANY gRPC error/timeout → Gate applies AdmissionFailureMode (STORE_TIMEOUT).
-		return noopRelease, false, err
+		// ANY gRPC error/timeout → Gate applies AdmissionFailureMode. The outcome
+		// is the same either way; classifyRPCError only separates a REFUSED
+		// credential (reported STORE_UNAUTHENTICATED) from an unanswered call
+		// (STORE_TIMEOUT), which are diagnosed in completely different places.
+		return noopRelease, false, classifyRPCError(err)
 	}
 	if !resp.GetAdmitted() {
 		// Definite reject (reason carried in resp); NOT an uncertain outcome.

@@ -2,6 +2,7 @@ package sessionadmission
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -71,8 +72,11 @@ func (g *Gate) Admit(ctx context.Context, md adapter.InboundContext) (func(), Ad
 	release, ok, err := g.store.Acquire(actx, md.User, device, limit)
 	if err != nil {
 		// Store error or timeout (e.g. a remote agent unreachable/slow). Apply the
-		// failure mode, tagged STORE_TIMEOUT; no tracked count changed.
-		return noopRelease, AdmissionResult{Admit: g.onUncertain(), Reason: ReasonStoreTimeout}
+		// failure mode; no tracked count changed. A store that refused the node's
+		// CREDENTIAL is reported separately: it is not a timeout, it needs an
+		// operator to fix a secret rather than a network, and collapsing the two
+		// left a node refusing every user with nothing in the log to say why.
+		return noopRelease, AdmissionResult{Admit: g.onUncertain(), Reason: classifyStoreError(err)}
 	}
 	if !ok {
 		// Definite at-limit decision: reject regardless of failure mode.
@@ -85,4 +89,17 @@ func (g *Gate) Admit(ctx context.Context, md adapter.InboundContext) (func(), Ad
 // mode: FailOpen ("allow") admits, FailClose ("reject") rejects.
 func (g *Gate) onUncertain() bool {
 	return g.failureMode != FailClose
+}
+
+// classifyStoreError maps an Acquire error onto the reason reported for it.
+// Everything is a STORE_TIMEOUT except an error the store itself tags as a
+// refused credential, which keeps the admit/reject outcome unchanged (both are
+// uncertain outcomes resolved by the failure mode) while telling the operator
+// which of the two problems they actually have.
+func classifyStoreError(err error) AdmissionReason {
+	var authErr StoreAuthError
+	if errors.As(err, &authErr) && authErr.StoreUnauthenticated() {
+		return ReasonStoreUnauthenticated
+	}
+	return ReasonStoreTimeout
 }
